@@ -129,13 +129,12 @@ with st.sidebar:
         linhas_max = st.number_input("Máx. Linhas:", min_value=0, max_value=60, value=30)
         
     st.markdown("---")
-    st.markdown("### 🖼️ Espelho / Critérios da Banca (Imagens)")
-    st.markdown("Envie fotos ou prints do edital, espelho de correção ou tabela de pontos da banca:")
-    
+    st.markdown("### 🖼️ Espelho / Critérios da Banca")
     imagens_criterios = st.file_uploader(
-        "Carregar imagens de critérios:",
+        "Fotos do edital ou espelho de pontos:",
         type=["png", "jpg", "jpeg"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key="critarios_upload"
     )
     
     st.markdown("---")
@@ -148,15 +147,30 @@ with st.sidebar:
 # 4. INTERFACE PRINCIPAL
 # ==========================================
 st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações</h1>", unsafe_allow_html=True)
-st.markdown("Envie as imagens com os critérios da banca na barra lateral, preencha o tema e a sua redação abaixo para uma correção milimétrica.")
+st.markdown("Envie os critérios na barra lateral, defina o tema e forneça o texto **digitando** ou enviando a **foto da sua folha de redação**.")
 st.markdown("---")
 
 col_input, col_output = st.columns([1, 1], gap="large")
 
 with col_input:
-    st.subheader("✍️ Envio do Texto")
+    st.subheader("✍️ Envio do Texto ou Foto")
     tema_redacao = st.text_input("🎯 Tema da Redação:", placeholder="Ex: Os desafios da valorização da água no Brasil")
-    texto_usuario = st.text_area("📄 Digite ou cole sua redação completa aqui:", height=420, placeholder="Insira o texto dissertativo-argumentativo...")
+    
+    # Abas para escolher entre Digitar ou Enviar Foto da Redação
+    aba_texto, aba_foto = st.tabs(["⌨️ Digitar Texto", "📸 Enviar Foto da Redação"])
+    
+    with aba_texto:
+        texto_usuario = st.text_area("Digite ou cole sua redação:", height=320, placeholder="Insira o texto completo...")
+    
+    with aba_foto:
+        foto_redacao_files = st.file_uploader(
+            "Envie foto(s) da sua folha de redação manuscrita:",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key="foto_redacao_upload"
+        )
+        if foto_redacao_files:
+            st.success(f"✅ {len(foto_redacao_files)} imagem(ns) da redação anexada(s)!")
     
     botao_analisar = st.button("🚀 Analisar e Corrigir Redação", use_container_width=True)
 
@@ -168,29 +182,28 @@ with col_output:
             st.error("⚠️ Chave de API do Gemini não configurada.")
         elif not tema_redacao.strip():
             st.warning("⚠️ Por favor, informe o tema da redação.")
-        elif not texto_usuario.strip():
-            st.warning("⚠️ O campo de texto da redação está vazio.")
+        elif not texto_usuario.strip() and not foto_redacao_files:
+            st.warning("⚠️ Você precisa digitar o texto ou enviar a foto da sua redação.")
         else:
-            with st.spinner("A IA está analisando as imagens de critérios da banca e avaliando o texto rigorosamente..."):
+            with st.spinner("A IA está lendo as imagens (critérios e/ou redação manuscrita) e realizando a correção rigorosa..."):
                 
-                # Prepara a lista de conteúdos para o Gemini (aceita texto e imagens simultaneamente)
                 contents_payload = []
                 
-                # Se o usuário enviou imagens de critérios, faz o append delas primeiro
+                # 1. Anexa imagens de critérios/espelho da banca, se houver
                 if imagens_criterios:
-                    contents_payload.append("--- IMAGENS COM OS CRITÉRIOS, ESPELHO E PONTUAÇÃO DA BANCA ---")
+                    contents_payload.append("--- IMAGENS COM OS CRITÉRIOS E ESPELHO DE PONTUAÇÃO DA BANCA ---")
                     for img in imagens_criterios:
-                        img_bytes = img.getvalue()
-                        # Identifica o tipo mime correto da imagem enviada
-                        mime_type = img.type if img.type else "image/jpeg"
-                        contents_payload.append(
-                            types.Part.from_bytes(
-                                data=img_bytes,
-                                mime_type=mime_type,
-                            )
-                        )
+                        contents_payload.append(types.Part.from_bytes(data=img.getvalue(), mime_type=img.type or "image/jpeg"))
 
-                # Adiciona o texto da redação e o tema
+                # 2. Anexa fotos da redação do aluno, se houver
+                if foto_redacao_files:
+                    contents_payload.append("--- FOTO(S) DA REDAÇÃO ESCRITA PELO ALUNO ---")
+                    for foto in foto_redacao_files:
+                        contents_payload.append(types.Part.from_bytes(data=foto.getvalue(), mime_type=foto.type or "image/jpeg"))
+
+                # 3. Monta o prompt de instruções
+                info_texto_digitado = f"\nTexto Digitado pelo Aluno:\n{texto_usuario}" if texto_usuario.strip() else "\n(O aluno enviou a redação em formato de imagem/foto)."
+
                 texto_prompt_final = f"""
 INSTRUÇÕES DE AVALIAÇÃO:
 - Padrão de Exame Base: {tipo_exame}
@@ -198,24 +211,24 @@ INSTRUÇÕES DE AVALIAÇÃO:
 - Nota Máxima Permitida: {nota_maxima} pontos
 - Limite de Linhas: de {linhas_min} a {linhas_max} linhas
 
-{("IMPORTANTE: Utilize obrigatoriamente as imagens de critérios acima fornecidas para extrair detalhadamente o valor de cada tópico, o que pontua e o que retira pontos, aplicando rigorosamente essa tabela na correção." if imagens_criterios else "Avalie com base estrita nos critérios padrão da banca informada.")}
+DIRETRIZES:
+1. Se houver imagens de critérios da banca fornecidas acima, utilize-as obrigatoriamente para pontuar cada tópico, ver penalidades e exigências.
+2. Se houver foto(s) da redação fornecida(s) acima, faça a transcrição visual e leitura detalhada da caligrafia do aluno para avaliá-la.
+{info_texto_digitado}
 
---- DADOS DA REDAÇÃO ---
-Tema: {tema_redacao}
-
-Texto do Aluno:
-{texto_usuario}
+Tema da Redação: {tema_redacao}
 """
                 contents_payload.append(texto_prompt_final)
 
                 prompt_sistema = f"""Você é um corretor oficial, altamente técnico e especialista em bancas de redação e concursos.
-Seu trabalho é ler com máxima atenção as imagens com os critérios/espelhos da banca enviadas pelo usuário, mapear exatamente o valor de cada ponto, penalidades e exigências, e em seguida avaliar o texto do aluno de forma cirúrgica com base exclusiva nelas.
+Sua tarefa é ler as imagens enviadas (espelho/critérios da banca e/ou foto da redação manuscrita do aluno), transcrever o texto caso necessário, e aplicar uma correção impecável e rigorosa.
 
 Estruture sua resposta de forma clara utilizando Markdown contendo obrigatoriamente:
-1. **Nota Global Atribuída** (Proporcional à nota máxima de {nota_maxima} pontos, fundamentada no espelho da banca).
-2. **Análise por Tópicos / Critérios do Espelho** (Demonstre o quanto o aluno tirou em cada quesito visualizado nas imagens).
-3. **Desvios Gramaticais e Estruturais** (Apontamento detalhado de falhas).
-4. **Caminho para a Nota Máxima** (Orientações exatas de como ajustar o texto com base nas regras da banca).
+1. **Nota Global Atribuída** (Proporcional à nota máxima de {nota_maxima} pontos, embasada no espelho).
+2. **Transcrição Detectada** (Se o aluno enviou foto, traga brevemente o texto transcrito para validação).
+3. **Análise por Tópicos / Critérios do Espelho** (Pontuação detalhada quesito por quesito com base nas imagens da banca).
+4. **Desvios Gramaticais e Estruturais** (Apontamento de desvios e erros).
+5. **Caminho para a Nota Máxima** (Orientações exatas de como reescrever para gabaritar).
 """
 
                 try:
@@ -224,11 +237,11 @@ Estruture sua resposta de forma clara utilizando Markdown contendo obrigatoriame
                         contents=contents_payload,
                         config=types.GenerateContentConfig(
                             system_instruction=prompt_sistema,
-                            temperature=0.1, # Temperatura bem baixa para seguir estritamente o espelho visual
+                            temperature=0.1,
                         )
                     )
                     st.markdown(response.text)
                 except Exception as e:
                     st.error(f"Erro ao processar a solicitação com a API do Gemini: {e}")
     else:
-        st.info("Envie as imagens dos critérios da banca na barra lateral (se houver), preencha a redação e clique em **Analisar e Corrigir Redação**.")
+        st.info("Configure os critérios na barra lateral, envie o texto ou a foto da redação e clique em **Analizar e Corrigir Redação**.")
