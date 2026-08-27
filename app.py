@@ -109,7 +109,6 @@ def init_gemini(api_key: str):
 
 gemini_client = init_gemini(st.session_state.active_gemini_key)
 
-# Arquivo local para salvar histórico de redações
 HISTORICO_FILE = "historico_redacoes.json"
 
 def carregar_historico():
@@ -141,7 +140,8 @@ with st.sidebar:
     )
     
     st.markdown("### 🏛️ Parâmetros da Banca")
-    banca_nome = st.selectbox("Banca Organizadora:", ["Geral / Outra", "CESPE / Cebraspe", "FGV", "FCC", "Vunesp", "IBFC"])
+    # Adicionado Instituto AOCP na lista de bancas
+    banca_nome = st.selectbox("Banca Organizadora:", ["Geral / Outra", "Instituto AOCP", "CESPE / Cebraspe", "FGV", "FCC", "Vunesp", "IBFC"])
     nota_maxima = st.number_input("Nota Máxima:", min_value=10, max_value=1000, value=100, step=10)
     
     col_l1, col_l2 = st.columns(2)
@@ -153,7 +153,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🚀 Recursos Exclusivos Pro")
     ativar_comparador = st.checkbox("🔄 Habilitar Simulador Cruzado de 2 Bancas", value=True, help="Avalia o texto simultaneamente em dois padrões diferentes.")
-    banca_secundaria = st.selectbox("Segunda Banca para Comparação:", ["ENEM", "CESPE / Cebraspe", "FGV", "FCC"]) if ativar_comparador else None
+    banca_secundaria = st.selectbox("Segunda Banca para Comparação:", ["ENEM", "Instituto AOCP", "CESPE / Cebraspe", "FGV", "FCC"]) if ativar_comparador else None
 
     st.markdown("---")
     st.markdown("### 🖼️ Espelho / Critérios da Banca")
@@ -174,7 +174,7 @@ with st.sidebar:
 # 4. INTERFACE PRINCIPAL (ABAS DO SISTEMA)
 # ==========================================
 st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações Pro</h1>", unsafe_allow_html=True)
-st.markdown("Sistema avançado com análise de espelhos visuais, reescrita interativa, raio-x de repertórios e histórico analítico.")
+st.markdown("Sistema avançado com Gride de Espelho Oficial, análise visual, reescrita interativa e raio-x de repertórios.")
 st.markdown("---")
 
 aba_corretor, aba_reescrita, aba_historico = st.tabs(["🚀 Corretor & Relatório", "✍️ Reescrita Interativa (Nota 10)", "📈 Dashboard & Histórico de Erros"])
@@ -214,7 +214,7 @@ with aba_corretor:
             elif not texto_usuario.strip() and not foto_redacao_files:
                 st.warning("⚠️ Você precisa digitar o texto ou enviar a foto da sua redação.")
             else:
-                with st.spinner("A IA está processando o espelho visual, cruzando com a banca e gerando o diagnóstico..."):
+                with st.spinner("A IA está processando o espelho visual, aplicando o rigor da banca e gerando o diagnóstico..."):
                     
                     contents_payload = []
                     
@@ -241,22 +241,23 @@ INSTRUÇÕES DE AVALIAÇÃO:
 {comparativo_texto}
 
 DIRETRIZES:
-1. Utilize obrigatoriamente as imagens de critérios/espelhos para pontuar quesito por quesito de forma exata.
-2. Faça um "Raio-X de Repertórios e Clichês", avaliando se o aluno utilizou argumentos "coringas" repetitivos ou repertórios produtivos originais.
+1. Utilize obrigatoriamente as imagens de critérios/espelhos ou as exigências estruturais da banca ({banca_nome}) para pontuar quesito por quesito de forma exata.
+2. Monte o **Gride de Espelho Oficial** detalhando de forma visual e estruturada a pontuação separada por eixos ou critérios avaliativos da banca selecionada.
+3. Faça um "Raio-X de Repertórios e Clichês", avaliando a originalidade dos argumentos.
 {info_texto_digitado}
 
 Tema da Redação: {tema_redacao}
 """
                     contents_payload.append(texto_prompt_final)
 
-                    prompt_sistema = f"""Você é o corretor mais técnico, rigoroso e avançado do mercado para bancas de redação e concursos.
-Sua tarefa é analisar as imagens enviadas (espelho/critérios e/ou foto da redação), transcrever o texto manuscrito se necessário, e entregar uma avaliação estruturada e cirúrgica.
+                    prompt_sistema = f"""Você é o corretor mais técnico, rigoroso e avançado do mercado para bancas de redação e concursos (com forte domínio dos critérios da banca {banca_nome}).
+Sua tarefa é analisar as imagens enviadas, transcrever o texto manuscrito se necessário, e entregar uma avaliação estruturada e cirúrgica.
 
 Estruture sua resposta obrigatoriamente usando Markdown com as seguintes seções:
 1. **Nota Global Atribuída** (Proporcional a {nota_maxima} pontos).
-2. **Resumo do Espelho e Gride de Pontuação** (Tabela ou tópicos detalhando quanto tirou em cada quesito visualizado).
+2. **Gride de Espelho Oficial** (Resumo visual estruturado da nota separada por eixos de pontuação da banca).
 3. **Transcrição Detectada** (Caso tenha enviado foto, traga o texto transcrito).
-4. **Raio-X de Repertórios e Clichês** (Análise crítica sobre a originalidade e o uso de argumentos coringas).
+4. **Raio-X de Repertórios e Clichês** (Análise crítica sobre a originalidade e o uso de argumentos).
 5. **Desvios Gramaticais e Estruturais** (Erros ortográficos e sintáticos apontados).
 6. **Caminho para a Nota Máxima** (Orientações exatas de reescrita).
 {("(7. Comparativo Cruzado com " + str(banca_secundaria) + ")") if ativar_comparador and banca_secundaria else ""}
@@ -274,7 +275,6 @@ Estruture sua resposta obrigatoriamente usando Markdown com as seguintes seçõe
                         resultado_final = response.text
                         st.markdown(resultado_final)
                         
-                        # Salva automaticamente no histórico local
                         salvar_historico({
                             "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "tema": tema_redacao,
