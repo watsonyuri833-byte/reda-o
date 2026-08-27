@@ -5,15 +5,16 @@ from google import genai
 from google.genai import types
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA
+# 1. CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
 # ==========================================
 st.set_page_config(
-    page_title="Corretor de Redação IA",
-    page_icon="??",
+    page_title="Corretor de Redação - IA",
+    page_icon="📝",
     layout="wide",
 )
 
-st.markdown("""
+st.markdown(
+    """
 <style>
     .stApp { 
         background: linear-gradient(135deg, #0d1117 0%, #161b22 100%) !important; 
@@ -21,6 +22,36 @@ st.markdown("""
     }
     .stApp p, .stApp label, .stApp span, h1, h2, h3, h4, h5, h6 {
         color: #e6edf3 !important;
+    }
+    div[data-baseweb="input"],
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"],
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="select"] * {
+        background-color: #161b22 !important;
+        color: #f0f6fc !important;
+    }
+    .stApp input, 
+    .stApp textarea, 
+    .stApp select,
+    div[role="combobox"] {
+        background-color: #161b22 !important;
+        color: #f0f6fc !important;
+        border-color: #30363d !important;
+    }
+    div[data-baseweb="input"], div[data-baseweb="select"] {
+        border: 1px solid #30363d !important;
+        border-radius: 8px !important;
+    }
+    div[data-baseweb="input"]:focus-within,
+    div[data-baseweb="select"]:focus-within,
+    textarea:focus {
+        border-color: #58a6ff !important;
+        box-shadow: 0 0 0 1px #58a6ff !important;
+    }
+    ::placeholder, input::placeholder, textarea::placeholder {
+        color: #8b949e !important;
+        opacity: 1 !important;
     }
     .stButton>button {
         border-radius: 8px !important;
@@ -34,15 +65,37 @@ st.markdown("""
         border-color: #58a6ff !important;
         color: #58a6ff !important;
         background-color: #30363d !important;
+        box-shadow: 0 0 10px rgba(88, 166, 255, 0.2) !important;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        border-bottom: 1px solid #30363d;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #161b22 !important;
+        border-radius: 8px 8px 0px 0px !important;
+        border: 1px solid #30363d !important;
+        border-bottom: none !important;
+        padding: 8px 16px !important;
+        color: #8b949e !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #21262d !important;
+        color: #58a6ff !important;
+        border-top: 2px solid #58a6ff !important;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 # ==========================================
 # 2. INICIALIZAÇÃO DA API DO GEMINI
 # ==========================================
-# Pega a chave dos secrets do Streamlit ou de variável de ambiente
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+INIT_GEMINI = st.secrets.get("GEMINI_API_KEY", os.environ.get("GEMINI_API_KEY", ""))
+
+if "active_gemini_key" not in st.session_state:
+    st.session_state.active_gemini_key = INIT_GEMINI
 
 @st.cache_resource
 def init_gemini(api_key: str):
@@ -50,72 +103,80 @@ def init_gemini(api_key: str):
         return genai.Client(api_key=api_key)
     return None
 
-gemini_client = init_gemini(GEMINI_API_KEY)
+gemini_client = init_gemini(st.session_state.active_gemini_key)
 
 # ==========================================
-# 3. INTERFACE DO APLICATIVO
+# 3. SIDEBAR DE CONFIGURAÇÃO
 # ==========================================
-st.title("?? Corretor Inteligente de Redações")
-st.markdown("Cole seu texto abaixo, informe o tema e receba uma análise detalhada baseada em critérios de grandes exames.")
-
 with st.sidebar:
-    st.image("https://img.icons8.com/clouds/200/artificial-intelligence.png", width=120)
-    st.markdown("### Configurações")
+    st.markdown("### 📝 Corretor de Redação")
+    st.caption("Powered by Gemini 3.6 Flash")
+    st.markdown("---")
+    
     tipo_exame = st.selectbox(
         "Padrão de Correção:",
         ["ENEM (Competências 1 a 5)", "Dissertativo-Argumentativo Padrão", "Concurso Público"]
     )
+    
     st.markdown("---")
-    st.info("Dica: Certifique-se de configurar sua `GEMINI_API_KEY` nos segredos do Streamlit (`.streamlit/secrets.toml`).")
+    if not st.session_state.active_gemini_key:
+        st.warning("⚠️ Chave `GEMINI_API_KEY` não encontrada nos secrets do Streamlit.")
+    else:
+        st.success("✅ IA Conectada com Sucesso")
 
-# Área de entrada de dados
-col1, col2 = st.columns([1, 1])
+# ==========================================
+# 4. INTERFACE PRINCIPAL
+# ==========================================
+st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações</h1>", unsafe_allow_html=True)
+st.markdown("Insira o tema e o texto da sua redação para receber uma análise técnica detalhada com notas e sugestões de melhoria.")
+st.markdown("---")
 
-with col1:
-    tema_redacao = st.text_input("?? Tema da Redação:", placeholder="Ex: Os desafios da mobilidade urbana no Brasil")
-    texto_usuario = st.text_area("?? Digite ou cole sua redação aqui:", height=400, placeholder="Insira o texto completo do seu texto dissertativo...")
+col_input, col_output = st.columns([1, 1], gap="large")
+
+with col_input:
+    st.subheader("✍️ Envio do Texto")
+    tema_redacao = st.text_input("🎯 Tema da Redação:", placeholder="Ex: Os desafios da valorização da água no Brasil")
+    texto_usuario = st.text_area("📄 Digite ou cole sua redação completa aqui:", height=420, placeholder="Insira o texto dissertativo-argumentativo...")
     
-    botao_corrigir = st.button("?? Analisar e Corrigir Redação", use_container_width=True)
+    botao_analisar = st.button("🚀 Analisar e Corrigir Redação", use_container_width=True)
 
-with col2:
-    st.markdown("### ?? Relatório de Correção")
+with col_output:
+    st.subheader("📊 Relatório Analítico de Correção")
     
-    if botao_corrigir:
-        if not GEMINI_API_KEY:
-            st.error("?? Chave de API do Gemini não configurada. Adicione a `GEMINI_API_KEY` no arquivo secrets.")
-        elif not texto_usuario.strip():
-            st.warning("?? Por favor, insira o texto da redação para realizar a análise.")
+    if botao_analisar:
+        if not st.session_state.active_gemini_key:
+            st.error("⚠️ Chave de API do Gemini não configurada. Adicione-a nos secrets do Streamlit.")
         elif not tema_redacao.strip():
-            st.warning("?? Informe o tema da redação.")
+            st.warning("⚠️ Por favor, informe o tema da redação.")
+        elif not texto_usuario.strip():
+            st.warning("⚠️ O campo de texto da redação está vazio.")
         else:
-            with st.spinner("A IA está analisando a gramática, coesão, argumento e estrutura..."):
+            with st.spinner("A IA está avaliando rigorosamente o texto com base no padrão selecionado..."):
                 
-                # Prompt estruturado para guiar a IA
-                prompt_sistema = f"""Você é um corretor especialista e rigoroso em redações com foco no padrão {tipo_exame}.
-Seu objetivo é avaliar o texto enviado pelo usuário considerando o tema: "{tema_redacao}".
+                # Prompt especialista configurado com base no padrão escolhido
+                prompt_sistema = f"""Você é um corretor oficial, altamente técnico e rigoroso em redações com foco no padrão {tipo_exame}.
+Seu objetivo é analisar o texto enviado pelo aluno tendo em vista o tema especificado.
 
-Estruture sua resposta de forma clara utilizando Markdown com as seguintes seções:
-1. **Nota Estimada Geral** (Atribua uma nota de 0 a 1000 ou proporcional ao padrão).
-2. **Análise por Competências / Critérios** (Pontos fortes e o que faltou em cada aspecto).
-3. **Desvios Gramaticais e Estruturais Encontrados** (Aponte trechos específicos que podem melhorar).
-4. **Sugestão de Reescrita / Caminho Ideal** (Como o texto poderia ser aprimorado para alcançar a nota máxima).
+Estruture sua resposta de forma clara utilizando Markdown contendo obrigatoriamente:
+1. **Nota Global Estimada** (Atribua uma nota final detalhada).
+2. **Avaliação por Critérios / Competências** (Análise aprofundada dos pontos fortes e falhas em cada eixo de avaliação).
+3. **Desvios Gramaticais e Estruturais** (Aponte termos ou trechos que precisam de correção ortográfica ou sintática).
+4. **Caminho para a Nota Máxima** (Orientações práticas de como reescrever os trechos fracos para alcançar a excelência).
 """
 
-                conteudo_prompt = f"Tema: {tema_redacao}\n\nTexto do Aluno:\n{texto_usuario}"
+                conteudo_prompt = f"Tema da Redação: {tema_redacao}\n\nTexto do Aluno:\n{texto_usuario}"
 
                 try:
                     response = gemini_client.models.generate_content(
-                        model='gemini-2.5-flash',
+                        model='gemini-3.6-flash',
                         contents=conteudo_prompt,
                         config=types.GenerateContentConfig(
                             system_instruction=prompt_sistema,
-                            temperature=0.3, # Temperatura baixa para manter maior rigor técnico e consistência
+                            temperature=0.2, # Mantém maior rigor técnico e consistência na correção
                         )
                     )
-                    
                     st.markdown(response.text)
-                    
                 except Exception as e:
-                    st.error(f"Erro ao comunicar com a API do Gemini: {e}")
+                    st.error(f"Erro ao processar a solicitação com a API do Gemini: {e}")
     else:
-        st.info("Preencha os campos ao lado e clique em **Analisar e Corrigir Redação** para ver o feedback detalhado da IA.")
+        st.info("Preencha o tema, insira sua redação ao lado e clique em **Analisar e Corrigir Redação**.")
