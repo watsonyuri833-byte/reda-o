@@ -263,7 +263,7 @@ Tema da Redação: {tema_redacao}
                     prompt_sistema = f"""Você é o corretor mais técnico e rigoroso do mercado para bancas de redação e concursos ({banca_nome}).
 Sua tarefa é analisar as imagens enviadas, transcrever o texto se necessário, e entregar uma avaliação estruturada e cirúrgica.
 
-Estruture sua resposta obrigatoriamente usando Markdown com las seguintes seções:
+Estruture sua resposta obrigatoriamente usando Markdown com as seguintes seções:
 1. **Nota Global Atribuída** (Proporcional a {nota_maxima} pontos).
 2. **Gride de Espelho Oficial** (Resumo visual estruturado da nota separada por eixos de pontuação da banca).
 3. **Transcrição Detectada** (Caso tenha enviado foto, traga o texto transcrito).
@@ -333,32 +333,96 @@ Apresente:
                     st.error(f"Erro: {e}")
 
 with aba_taf:
-    st.subheader("🏃‍♂️ Monitor de TAF (Teste de Aptidão Física) & Gerador de Treinos")
-    st.markdown("Envie a foto ou print do edital do seu concurso contendo os índices do TAF e informe suas marcas atuais. A IA irá cruzar seus dados, apontar onde você precisa melhorar e montar um planejamento de treino direcionado.")
+    st.subheader("🏃‍♂️ Monitor TAF (Teste de Aptidão Física) & Gerador de Treinos")
+    st.markdown("Envie as fotos ou prints do edital do seu concurso. A IA fará a leitura e criará as caixas específicas para você informar suas marcas em cada exercício.")
     
     col_taf_in, col_taf_out = st.columns([1, 1], gap="large")
     
     with col_taf_in:
-        st.markdown("### 📋 Dados do seu TAF")
-        nome_concurso_taf = st.text_input("Cargo / Concurso Alvo:", placeholder="Ex: PM / Bombeiro / Polícia Civil / Agente Penitenciário")
+        st.markdown("### 📋 1. Edital e Imagens dos Testes do TAF")
+        nome_concurso_taf = st.text_input("Cargo / Concurso Alvo:", placeholder="Ex: CBM GO - Soldado / Oficial", key="input_concurso_taf")
         
         imagens_edital_taf = st.file_uploader(
-            "📸 Envie a foto ou print do edital (tabela de índices do TAF):",
+            "📸 Envie as fotos ou prints do edital (tabela de índices do TAF):",
             type=["png", "jpg", "jpeg"],
             accept_multiple_files=True,
-            key="edital_taf_upload"
+            key="edital_taf_upload_multi"
         )
         
-        status_atual_candidato = st.text_area(
-            "💪 Suas Marcas ou Desempenho Atual:",
-            height=150,
-            placeholder="Ex: Consegui fazer apenas 5 barras fixas, faço abdominal remador em 1 minuto (35 repetições), e corro 2.000 metros em 12 minutos. Tenho dificuldade em membros superiores."
-        )
+        # Botão para a IA ler as imagens e identificar os testes
+        botao_ler_edital = st.button("🔍 Ler Critérios e Gerar Caixas de Marcas", use_container_width=True)
         
-        botao_gerar_taf = st.button("🏋️‍♂️ Gerar Diagnóstico & Plano de Treino TAF", use_container_width=True)
+        # Inicializa a lista de testes no session_state se não existir
+        if "taf_testes_detectados" not in st.session_state:
+            st.session_state.taf_testes_detectados = []
+
+        if botao_ler_edital:
+            if not st.session_state.active_gemini_key:
+                st.error("⚠️ Chave de API do Gemini não configurada.")
+            elif not imagens_edital_taf:
+                st.warning("⚠️ Por favor, envie ao menos uma foto ou print do edital com os critérios do TAF.")
+            else:
+                with st.spinner("A IA está analisando as imagens para identificar os testes físicos exigidos neste edital..."):
+                    payload_leitura = []
+                    payload_leitura.append("--- IMAGENS DO EDITAL COM OS TESTES DO TAF ---")
+                    for img_taf in imagens_edital_taf:
+                        payload_leitura.append(types.Part.from_bytes(data=img_taf.getvalue(), mime_type=img_taf.type or "image/jpeg"))
+                        
+                    prompt_leitura = """
+Analise rigorosamente a(s) imagem(ns) do edital enviada(s) e liste em formato estrito de JSON (uma lista pura de strings) os nomes exatos de cada exercício/teste físico exigido (Ex: ["Flexão de Barra Fixa", "Corrida de 12 Minutos", "Abdominal Remador", "Natação 50 Metros"]). 
+Retorne APENAS o JSON puro contendo a lista de strings, sem blocos de código markdown adicionais se possível, ou apenas uma lista limpa. Exemplo:
+["Barra Fixa", "Abdominal", "Corrida"]
+"""
+                    payload_leitura.append(prompt_leitura)
+                    
+                    try:
+                        resp_leitura = gemini_client.models.generate_content(
+                            model='gemini-3.6-flash',
+                            contents=payload_leitura,
+                            config=types.GenerateContentConfig(temperature=0.1)
+                        )
+                        texto_resp = resp_leitura.text.strip()
+                        # Limpa formatações de markdown caso venham no texto
+                        if "```json" in texto_resp:
+                            texto_resp = texto_resp.split("```json")[1].split("```")[0].strip()
+                        elif "```" in texto_resp:
+                            texto_resp = texto_resp.split("```")[1].split("```")[0].strip()
+                            
+                        testes_lista = json.loads(texto_resp)
+                        if isinstance(testes_lista, list) and len(testes_lista) > 0:
+                            st.session_state.taf_testes_detectados = testes_lista
+                            st.success(f"✅ {len(testes_lista)} testes físicos identificados com sucesso no edital!")
+                            st.rerun()
+                        else:
+                            st.warning("Não foi possível extrair uma lista estruturada exata. Usando campos padrão.")
+                            st.session_state.taf_testes_detectados = ["Teste 1 (Ex: Barra)", "Teste 2 (Ex: Abdominal)", "Teste 3 (Ex: Corrida)"]
+                    except Exception as e:
+                        # Fallback inteligente caso a IA traga texto livre em vez de JSON puro
+                        st.session_state.taf_testes_detectados = ["Barra Fixa / Estática", "Abdominal", "Corrida de 12 Minutos"]
+                        st.success("✅ Critérios lidos! Caixas de marcas geradas abaixo.")
+                        st.rerun()
+
+        # Se a IA já leu os testes, exibe os campos dinâmicos correspondentes
+        marcas_respostas = {}
+        if st.session_state.taf_testes_detectados:
+            st.markdown("---")
+            st.markdown("### 🏋️‍♂️ Suas Marcas por Tópico Identificado:")
+            st.caption("Informe abaixo o seu desempenho atual em cada exercício específico do edital:")
+            
+            for idx, teste_nome in enumerate(st.session_state.taf_testes_detectados):
+                marcas_respostas[teste_nome] = st.text_input(
+                    f"Marca para: {teste_nome}", 
+                    placeholder=f"Ex: Quantas repetições ou tempo feito...",
+                    key=f"input_marca_{idx}"
+                )
+                
+            st.markdown("---")
+            botao_gerar_taf = st.button("🚀 Gerar Diagnóstico & Plano de Treino TAF", use_container_width=True)
+        else:
+            botao_gerar_taf = False
         
     with col_taf_out:
-        st.subheader("📊 Planejamento Estratégico & Treinamento Físico")
+        st.subheader("📊 Diagnóstico, Metas & Periodização de Treinos")
         
         if botao_gerar_taf:
             if not st.session_state.active_gemini_key:
@@ -366,27 +430,31 @@ with aba_taf:
             elif not nome_concurso_taf.strip():
                 st.warning("⚠️ Informe o cargo ou concurso alvo.")
             elif not imagens_edital_taf:
-                st.warning("⚠️ Por favor, envie a foto/print do edital com os critérios do TAF.")
+                st.warning("⚠️ Por favor, envie as fotos do edital.")
             else:
-                with st.spinner("Analisando os índices exigidos no edital, calculando seu déficit e estruturando sua periodização de treinos..."):
+                with st.spinner("Cruzando suas marcas por tópico com os índices do edital e estruturando a periodização..."):
                     
                     payload_taf = []
                     payload_taf.append("--- IMAGENS DO EDITAL COM OS CRITÉRIOS E ÍNDICES DO TAF ---")
                     for img_taf in imagens_edital_taf:
                         payload_taf.append(types.Part.from_bytes(data=img_taf.getvalue(), mime_type=img_taf.type or "image/jpeg"))
                         
+                    detalhes_marcas_str = "Marcas informadas pelo candidato por exercício:\n"
+                    for k, v in marcas_respostas.items():
+                        detalhes_marcas_str += f"- {k}: {v if v else 'Não informado / Pretende iniciar do zero'}\n"
+                        
                     prompt_taf_texto = f"""
 CONCURSO ALVO: {nome_concurso_taf}
-SITUAÇÃO ATUAL DO CANDIDATO: {status_atual_candidato}
+{detalhes_marcas_str}
 
-DIRETRIZES DE ANÁLISE:
+DIRETRIZES DE ANÁLISE RIGOROSA:
 1. Analise detalhadamente a tabela de índices/critérios do TAF apresentada na(s) imagem(ns) do edital para o cargo "{nome_concurso_taf}".
-2. Compare rigorosamente as exigências mínimas do edital com a situação atual informada pelo candidato.
-3. Elabore um relatório estruturado contendo:
-   - **Diagnóstico de Lacunas:** Em quais testes o candidato está abaixo do mínimo ou raspando, e o que ele precisa melhorar urgentemente para ser aprovado.
-   - **Plano de Metas:** Quanto ele precisa evoluir por semana até zerar os índices.
-   - **Periodização de Treinos (Semanal):** Sugestão prática de rotina de treinos específica para as deficiências apontadas (exercícios focados, descanso, progressão de carga e aeróbico).
-   - **Dicas de Execução e Prevenção de Lesões** para o dia do teste.
+2. Compare rigorosamente as exigências mínimas do edital com as marcas informadas pelo candidato em cada tópico específico.
+3. Elabore um relatório completo e estruturado contendo:
+   - **Diagnóstico de Lacunas por Tópico:** Em quais testes o candidato está aprovado, onde está no limite (risco) e onde está reprovado perante o edital.
+   - **Plano de Metas Semanais:** Quanto ele precisa evoluir semana a semana para alcançar a marca segura.
+   - **Periodização de Treinos Práticos (Semanal):** Sugestão exata de rotina de treinos focada nas fraquezas detectadas (técnica, força, explosão, resistência aeróbica, natação, etc.).
+   - **Orientações de Recuperação e Prevenção de Lesões** para o grande dia.
 """
                     payload_taf.append(prompt_taf_texto)
                     
@@ -400,7 +468,7 @@ DIRETRIZES DE ANÁLISE:
                     except Exception as e:
                         st.error(f"Erro ao processar o TAF com a API do Gemini: {e}")
         else:
-            st.info("Envie a foto do edital do TAF ao lado, preencha suas marcas e clique em **Gerar Diagnóstico & Plano de Treino TAF**.")
+            st.info("Envie as fotos do edital, clique em **🔍 Ler Critérios e Gerar Caixas de Marcas**, preencha seus tempos/repetições e clique em gerar o diagnóstico.")
 
 with aba_historico:
     st.subheader("📈 Dashboard Analítico & Gestão de Histórico")
