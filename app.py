@@ -106,7 +106,7 @@ def init_gemini(api_key: str):
 gemini_client = init_gemini(st.session_state.active_gemini_key)
 
 # ==========================================
-# 3. SIDEBAR DE CONFIGURAÇÃO E REQUISITOS DA BANCA
+# 3. SIDEBAR DE CONFIGURAÇÃO E CRITÉRIOS DA BANCA
 # ==========================================
 with st.sidebar:
     st.markdown("### 📝 Corretor de Redação")
@@ -118,13 +118,23 @@ with st.sidebar:
         ["ENEM (Competências 1 a 5)", "Dissertativo-Argumentativo Padrão", "Concurso Público (Personalizado)"]
     )
     
-    st.markdown("### 🏛️ Requisitos da Banca")
-    st.markdown("Cole abaixo as regras, edital ou exigências específicas da banca organizadora (ex: CESPE/Cebraspe, FGV, FCC, Vunesp):")
+    st.markdown("### 🏛️ Requisitos e Parâmetros da Banca")
+    st.markdown("Organize abaixo as regras específicas exigidas pela banca organizadora:")
     
-    requisitos_banca = st.text_area(
-        "Critérios Extras da Banca:",
-        placeholder="Ex: Considerar o limite de 30 linhas, penalizar fuga ao tema em x pontos, exigir coesão interparágrafos rígida, etc.",
-        height=150
+    # Campos estruturados para evitar bloco de texto confuso
+    banca_nome = st.selectbox("Banca Organizadora:", ["Geral / Outra", "CESPE / Cebraspe", "FGV", "FCC", "Vunesp", "IBFC"])
+    nota_maxima = st.number_input("Nota Máxima da Redação:", min_value=10, max_value=1000, value=100, step=10)
+    
+    col_l1, col_l2 = st.columns(2)
+    with col_l1:
+        linhas_min = st.number_input("Mín. de Linhas:", min_value=0, max_value=50, value=20)
+    with col_l2:
+        linhas_max = st.number_input("Máx. de Linhas:", min_value=0, max_value=60, value=30)
+        
+    criterios_extras = st.text_area(
+        "Instruções ou Foco Específico da Banca:",
+        placeholder="Ex: Rigor excessivo com gramática, obrigatoriedade de título, penalização por desrespeito à estrutura dissertativa...",
+        height=100
     )
     
     st.markdown("---")
@@ -137,7 +147,7 @@ with st.sidebar:
 # 4. INTERFACE PRINCIPAL
 # ==========================================
 st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações</h1>", unsafe_allow_html=True)
-st.markdown("Insira o tema e o texto da sua redação para receber uma análise técnica detalhada baseada no padrão e nos requisitos informados.")
+st.markdown("Insira o tema e o texto da sua redação para receber uma análise técnica detalhada baseada nos parâmetros e na banca definidos.")
 st.markdown("---")
 
 col_input, col_output = st.columns([1, 1], gap="large")
@@ -160,21 +170,29 @@ with col_output:
         elif not texto_usuario.strip():
             st.warning("⚠️ O campo de texto da redação está vazio.")
         else:
-            with st.spinner("A IA está avaliando rigorosamente o texto com base no padrão e nos requisitos da banca..."):
+            with st.spinner("A IA está avaliando rigorosamente o texto com base nos critérios organizados da banca..."):
                 
-                # Monta a instrução incluindo os requisitos da banca informados pelo usuário
-                instrucao_banca_extra = ""
-                if requisitos_banca.strip():
-                    instrucao_banca_extra = f"\n\nREQUISITOS ESPECÍFICOS DA BANCA / EDITAL INFORMADOS PELO USUÁRIO:\n{requisitos_banca}\n(Você DEVE seguir rigorosamente estes critérios adicionais na correção)."
+                # Consolida os parâmetros organizados de forma limpa para a IA
+                parametros_banca_formatados = f"""
+- Banca Organizadora: {banca_nome}
+- Nota Máxima Permitida: {nota_maxima} pontos
+- Limite de Linhas: de {linhas_min} a {linhas_max} linhas
+- Observações / Foco Específico: {criterios_extras if criterios_extras.strip() else 'Nenhum adicional'}
+"""
 
-                prompt_sistema = f"""Você é um corretor oficial, altamente técnico e rigoroso em redações com foco no padrão {tipo_exame}.{instrucao_banca_extra}
-Seu objetivo é analisar o texto enviado pelo aluno tendo em vista o tema especificado e as regras da banca.
+                prompt_sistema = f"""Você é um corretor oficial, altamente técnico e rigoroso em redações.
+Padrão de Correção Base: {tipo_exame}
+
+PARÂMETROS E REQUISITOS DA BANCA DEFINIDOS PELO USUÁRIO:
+{parametros_banca_formatados}
+
+Seu objetivo é analisar o texto enviado pelo aluno considerando rigorosamente estes parâmetros, a escala de nota máxima informada e as exigências da banca.
 
 Estruture sua resposta de forma clara utilizando Markdown contendo obrigatoriamente:
-1. **Nota Global Estimada** (Atribua uma nota final detalhada com base nos critérios).
-2. **Avaliação por Critérios / Competências** (Análise aprofundada dos pontos fortes e falhas em cada eixo).
-3. **Desvios Gramaticais e Estruturais** (Aponte termos ou trechos que precisam de correção ortográfica ou sintática).
-4. **Caminho para a Nota Máxima** (Orientações práticas de como reescrever os trechos para alcançar a excelência segundo a banca).
+1. **Nota Global Atribuída** (Proporcional à nota máxima de {nota_maxima} pontos).
+2. **Avaliação por Critérios / Competências** (Análise técnica detalhada de acordo com as regras da banca).
+3. **Desvios Gramaticais e Estruturais** (Aponte falhas ortográficas, sintáticas ou de formatação).
+4. **Caminho para a Nota Máxima** (Orientações práticas de reescrita para alcançar o gabarito).
 """
 
                 conteudo_prompt = f"Tema da Redação: {tema_redacao}\n\nTexto do Aluno:\n{texto_usuario}"
@@ -185,11 +203,11 @@ Estruture sua resposta de forma clara utilizando Markdown contendo obrigatoriame
                         contents=conteudo_prompt,
                         config=types.GenerateContentConfig(
                             system_instruction=prompt_sistema,
-                            temperature=0.2, # Mantém maior rigor técnico e consistência
+                            temperature=0.2,
                         )
                     )
                     st.markdown(response.text)
                 except Exception as e:
                     st.error(f"Erro ao processar a solicitação com a API do Gemini: {e}")
     else:
-        st.info("Preencha o tema, configure os requisitos na barra lateral (se desejar), insira sua redação e clique em **Analisar e Corrigir Redação**.")
+        st.info("Ajuste os parâmetros da banca na barra lateral, insira sua redação e clique em **Analisar e Corrigir Redação**.")
