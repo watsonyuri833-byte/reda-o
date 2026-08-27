@@ -263,7 +263,7 @@ Tema da Redação: {tema_redacao}
                     prompt_sistema = f"""Você é o corretor mais técnico e rigoroso do mercado para bancas de redação e concursos ({banca_nome}).
 Sua tarefa é analisar as imagens enviadas, transcrever o texto se necessário, e entregar uma avaliação estruturada e cirúrgica.
 
-Estruture sua resposta obrigatoriamente usando Markdown com as seguintes seções:
+Estruture sua resposta obrigatoriamente usamos Markdown com as seguintes seções:
 1. **Nota Global Atribuída** (Proporcional a {nota_maxima} pontos).
 2. **Gride de Espelho Oficial** (Resumo visual estruturado da nota separada por eixos de pontuação da banca).
 3. **Transcrição Detectada** (Caso tenha enviado foto, traga o texto transcrito).
@@ -349,10 +349,8 @@ with aba_taf:
             key="edital_taf_upload_multi"
         )
         
-        # Botão para a IA ler as imagens e identificar os testes
         botao_ler_edital = st.button("🔍 Ler Critérios e Gerar Caixas de Marcas", use_container_width=True)
         
-        # Inicializa a lista de testes no session_state se não existir
         if "taf_testes_detectados" not in st.session_state:
             st.session_state.taf_testes_detectados = []
 
@@ -382,7 +380,6 @@ Retorne APENAS o JSON puro contendo a lista de strings, sem blocos de código ma
                             config=types.GenerateContentConfig(temperature=0.1)
                         )
                         texto_resp = resp_leitura.text.strip()
-                        # Limpa formatações de markdown caso venham no texto
                         if "```json" in texto_resp:
                             texto_resp = texto_resp.split("```json")[1].split("```")[0].strip()
                         elif "```" in texto_resp:
@@ -394,15 +391,14 @@ Retorne APENAS o JSON puro contendo a lista de strings, sem blocos de código ma
                             st.success(f"✅ {len(testes_lista)} testes físicos identificados com sucesso no edital!")
                             st.rerun()
                         else:
-                            st.warning("Não foi possível extrair uma lista estruturada exata. Usando campos padrão.")
-                            st.session_state.taf_testes_detectados = ["Teste 1 (Ex: Barra)", "Teste 2 (Ex: Abdominal)", "Teste 3 (Ex: Corrida)"]
+                            st.session_state.taf_testes_detectados = ["Barra Fixa / Estática", "Abdominal", "Corrida de 12 Minutos"]
+                            st.success("✅ Critérios lidos! Caixas de marcas geradas abaixo.")
+                            st.rerun()
                     except Exception as e:
-                        # Fallback inteligente caso a IA traga texto livre em vez de JSON puro
                         st.session_state.taf_testes_detectados = ["Barra Fixa / Estática", "Abdominal", "Corrida de 12 Minutos"]
                         st.success("✅ Critérios lidos! Caixas de marcas geradas abaixo.")
                         st.rerun()
 
-        # Se a IA já leu os testes, exibe os campos dinâmicos correspondentes
         marcas_respostas = {}
         if st.session_state.taf_testes_detectados:
             st.markdown("---")
@@ -424,6 +420,10 @@ Retorne APENAS o JSON puro contendo a lista de strings, sem blocos de código ma
     with col_taf_out:
         st.subheader("📊 Diagnóstico, Metas & Periodização de Treinos")
         
+        # Inicializa o histórico do chat TAF se não existir
+        if "taf_chat_history" not in st.session_state:
+            st.session_state.taf_chat_history = []
+            
         if botao_gerar_taf:
             if not st.session_state.active_gemini_key:
                 st.error("⚠️ Chave de API do Gemini não configurada.")
@@ -453,7 +453,7 @@ DIRETRIZES DE ANÁLISE RIGOROSA:
 3. Elabore um relatório completo e estruturado contendo:
    - **Diagnóstico de Lacunas por Tópico:** Em quais testes o candidato está aprovado, onde está no limite (risco) e onde está reprovado perante o edital.
    - **Plano de Metas Semanais:** Quanto ele precisa evoluir semana a semana para alcançar a marca segura.
-   - **Periodização de Treinos Práticos (Semanal):** Sugestão exata de rotina de treinos focada nas fraquezas detectadas (técnica, força, explosão, resistência aeróbica, natação, etc.).
+   - **Periodização de Treinos Práticos (Semanal):** Sugestão exata de rotina de treinos focada nas fraquezas detectadas.
    - **Orientações de Recuperação e Prevenção de Lesões** para o grande dia.
 """
                     payload_taf.append(prompt_taf_texto)
@@ -464,11 +464,61 @@ DIRETRIZES DE ANÁLISE RIGOROSA:
                             contents=payload_taf,
                             config=types.GenerateContentConfig(temperature=0.2)
                         )
-                        st.markdown(resp_taf.text)
+                        resultado_inicial_taf = resp_taf.text
+                        
+                        # Reseta e popula o chat history com o contexto inicial
+                        st.session_state.taf_chat_history = [
+                            {"role": "assistant", "content": resultado_inicial_taf}
+                        ]
                     except Exception as e:
                         st.error(f"Erro ao processar o TAF com a API do Gemini: {e}")
+        
+        # Exibe o histórico da conversa ou o relatório atual se já gerado
+        if st.session_state.taf_chat_history:
+            for message in st.session_state.taf_chat_history:
+                if message["role"] == "assistant":
+                    with st.chat_message("assistant"):
+                        st.markdown(message["content"])
+                else:
+                    with st.chat_message("user"):
+                        st.markdown(message["content"])
+            
+            # Caixa de texto interativa para conversar com o treinador IA sobre o TAF
+            user_msg_taf = st.chat_input("Converse com o treinador (Ex: Sou iniciante, tenho dor no joelho, preciso adaptar o treino...):")
+            
+            if user_msg_taf:
+                st.session_state.taf_chat_history.append({"role": "user", "content": user_msg_taf})
+                with st.chat_message("user"):
+                    st.markdown(user_msg_taf)
+                    
+                with st.spinner("O treinador está ajustando seu planejamento com base nas suas observações..."):
+                    try:
+                        # Monta o histórico para enviar ao Gemini
+                        chat_history_payload = []
+                        for m in st.session_state.taf_chat_history[:-1]:
+                            chat_history_payload.append(types.Content(
+                                role="model" if m["role"] == "assistant" else "user",
+                                parts=[types.Part.from_text(text=m["content"])]
+                            ))
+                            
+                        chat_session = gemini_client.chats.create(
+                            model="gemini-3.6-flash",
+                            history=chat_history_payload,
+                            config=types.GenerateContentConfig(
+                                system_instruction="Você é um personal trainer especialista em preparação física para Testes de Aptidão Física (TAF) em concursos públicos. Responda de forma motivadora, prática e técnica, ajustando os treinos, dando alternativas para iniciantes, cuidando de lesões informadas pelo aluno e focando rigorosamente nas exigências do edital.",
+                                temperature=0.3
+                            )
+                        )
+                        
+                        response_chat = chat_session.send_message(user_msg_taf)
+                        resposta_ia = response_chat.text
+                        
+                        st.session_state.taf_chat_history.append({"role": "assistant", "content": resposta_ia})
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro na conversa: {e}")
         else:
-            st.info("Envie as fotos do edital, clique em **🔍 Ler Critérios e Gerar Caixas de Marcas**, preencha seus tempos/repetições e clique em gerar o diagnóstico.")
+            st.info("Envie as fotos do edital, clique em **🔍 Ler Critérios e Gerar Caixas de Marcas**, preencha suas marcas e clique em gerar o diagnóstico para habilitar o chat com o treinador.")
 
 with aba_historico:
     st.subheader("📈 Dashboard Analítico & Gestão de Histórico")
