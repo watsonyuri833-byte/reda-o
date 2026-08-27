@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 import os
+import json
+from datetime import datetime
 import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
 from google import genai
 from google.genai import types
 
@@ -8,7 +12,7 @@ from google.genai import types
 # 1. CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
 # ==========================================
 st.set_page_config(
-    page_title="Corretor de Redação - IA",
+    page_title="Corretor de Redação - IA Pro",
     page_icon="📝",
     layout="wide",
 )
@@ -105,22 +109,40 @@ def init_gemini(api_key: str):
 
 gemini_client = init_gemini(st.session_state.active_gemini_key)
 
+# Arquivo local para salvar histórico de redações
+HISTORICO_FILE = "historico_redacoes.json"
+
+def carregar_historico():
+    if os.path.exists(HISTORICO_FILE):
+        try:
+            with open(HISTORICO_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def salvar_historico(novo_registro):
+    historico = carregar_historico()
+    historico.insert(0, novo_registro)
+    with open(HISTORICO_FILE, "w", encoding="utf-8") as f:
+        json.dump(historico, f, ensure_ascii=False, indent=4)
+
 # ==========================================
 # 3. SIDEBAR DE CONFIGURAÇÃO E PARÂMETROS
 # ==========================================
 with st.sidebar:
-    st.markdown("### 📝 Corretor de Redação")
+    st.markdown("### 📝 Corretor Pro - IA")
     st.caption("Powered by Gemini 3.6 Flash")
     st.markdown("---")
     
     tipo_exame = st.selectbox(
-        "Padrão de Correção:",
+        "Padrão Principal:",
         ["ENEM (Competências 1 a 5)", "Dissertativo-Argumentativo Padrão", "Concurso Público (Personalizado)"]
     )
     
     st.markdown("### 🏛️ Parâmetros da Banca")
     banca_nome = st.selectbox("Banca Organizadora:", ["Geral / Outra", "CESPE / Cebraspe", "FGV", "FCC", "Vunesp", "IBFC"])
-    nota_maxima = st.number_input("Nota Máxima da Redação:", min_value=10, max_value=1000, value=100, step=10)
+    nota_maxima = st.number_input("Nota Máxima:", min_value=10, max_value=1000, value=100, step=10)
     
     col_l1, col_l2 = st.columns(2)
     with col_l1:
@@ -128,6 +150,11 @@ with st.sidebar:
     with col_l2:
         linhas_max = st.number_input("Máx. Linhas:", min_value=0, max_value=60, value=30)
         
+    st.markdown("---")
+    st.markdown("### 🚀 Recursos Exclusivos Pro")
+    ativar_comparador = st.checkbox("🔄 Habilitar Simulador Cruzado de 2 Bancas", value=True, help="Avalia o texto simultaneamente em dois padrões diferentes.")
+    banca_secundaria = st.selectbox("Segunda Banca para Comparação:", ["ENEM", "CESPE / Cebraspe", "FGV", "FCC"]) if ativar_comparador else None
+
     st.markdown("---")
     st.markdown("### 🖼️ Espelho / Critérios da Banca")
     imagens_criterios = st.file_uploader(
@@ -144,104 +171,167 @@ with st.sidebar:
         st.success("✅ IA Conectada com Sucesso")
 
 # ==========================================
-# 4. INTERFACE PRINCIPAL
+# 4. INTERFACE PRINCIPAL (ABAS DO SISTEMA)
 # ==========================================
-st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações</h1>", unsafe_allow_html=True)
-st.markdown("Envie os critérios na barra lateral, defina o tema e forneça o texto **digitando** ou enviando a **foto da sua folha de redação**.")
+st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações Pro</h1>", unsafe_allow_html=True)
+st.markdown("Sistema avançado com análise de espelhos visuais, reescrita interativa, raio-x de repertórios e histórico analítico.")
 st.markdown("---")
 
-col_input, col_output = st.columns([1, 1], gap="large")
+aba_corretor, aba_reescrita, aba_historico = st.tabs(["🚀 Corretor & Relatório", "✍️ Reescrita Interativa (Nota 10)", "📈 Dashboard & Histórico de Erros"])
 
-with col_input:
-    st.subheader("✍️ Envio do Texto ou Foto")
-    tema_redacao = st.text_input("🎯 Tema da Redação:", placeholder="Ex: Os desafios da valorização da água no Brasil")
-    
-    # Abas para escolher entre Digitar ou Enviar Foto da Redação
-    aba_texto, aba_foto = st.tabs(["⌨️ Digitar Texto", "📸 Enviar Foto da Redação"])
-    
-    with aba_texto:
-        texto_usuario = st.text_area("Digite ou cole sua redação:", height=320, placeholder="Insira o texto completo...")
-    
-    with aba_foto:
-        foto_redacao_files = st.file_uploader(
-            "Envie foto(s) da sua folha de redação manuscrita:",
-            type=["png", "jpg", "jpeg"],
-            accept_multiple_files=True,
-            key="foto_redacao_upload"
-        )
-        if foto_redacao_files:
-            st.success(f"✅ {len(foto_redacao_files)} imagem(ns) da redação anexada(s)!")
-    
-    botao_analisar = st.button("🚀 Analisar e Corrigir Redação", use_container_width=True)
+with aba_corretor:
+    col_input, col_output = st.columns([1, 1], gap="large")
 
-with col_output:
-    st.subheader("📊 Relatório Analítico de Correção")
-    
-    if botao_analisar:
-        if not st.session_state.active_gemini_key:
-            st.error("⚠️ Chave de API do Gemini não configurada.")
-        elif not tema_redacao.strip():
-            st.warning("⚠️ Por favor, informe o tema da redação.")
-        elif not texto_usuario.strip() and not foto_redacao_files:
-            st.warning("⚠️ Você precisa digitar o texto ou enviar a foto da sua redação.")
-        else:
-            with st.spinner("A IA está lendo as imagens (critérios e/ou redação manuscrita) e realizando a correção rigorosa..."):
-                
-                contents_payload = []
-                
-                # 1. Anexa imagens de critérios/espelho da banca, se houver
-                if imagens_criterios:
-                    contents_payload.append("--- IMAGENS COM OS CRITÉRIOS E ESPELHO DE PONTUAÇÃO DA BANCA ---")
-                    for img in imagens_criterios:
-                        contents_payload.append(types.Part.from_bytes(data=img.getvalue(), mime_type=img.type or "image/jpeg"))
+    with col_input:
+        st.subheader("✍️ Envio do Texto ou Foto")
+        tema_redacao = st.text_input("🎯 Tema da Redação:", placeholder="Ex: Os desafios da valorização da água no Brasil")
+        
+        sub_aba_texto, sub_aba_foto = st.tabs(["⌨️ Digitar Texto", "📸 Enviar Foto da Redação"])
+        
+        with sub_aba_texto:
+            texto_usuario = st.text_area("Digite ou cole sua redação:", height=320, placeholder="Insira o texto completo...")
+        
+        with sub_aba_foto:
+            foto_redacao_files = st.file_uploader(
+                "Envie foto(s) da folha manuscrita:",
+                type=["png", "jpg", "jpeg"],
+                accept_multiple_files=True,
+                key="foto_redacao_upload"
+            )
+            if foto_redacao_files:
+                st.success(f"✅ {len(foto_redacao_files)} imagem(ns) da redação anexada(s)!")
+        
+        botao_analisar = st.button("🚀 Executar Análise Cirúrgica", use_container_width=True)
 
-                # 2. Anexa fotos da redação do aluno, se houver
-                if foto_redacao_files:
-                    contents_payload.append("--- FOTO(S) DA REDAÇÃO ESCRITA PELO ALUNO ---")
-                    for foto in foto_redacao_files:
-                        contents_payload.append(types.Part.from_bytes(data=foto.getvalue(), mime_type=foto.type or "image/jpeg"))
+    with col_output:
+        st.subheader("📊 Relatório Analítico de Correção")
+        
+        if botao_analisar:
+            if not st.session_state.active_gemini_key:
+                st.error("⚠️ Chave de API do Gemini não configurada.")
+            elif not tema_redacao.strip():
+                st.warning("⚠️ Por favor, informe o tema da redação.")
+            elif not texto_usuario.strip() and not foto_redacao_files:
+                st.warning("⚠️ Você precisa digitar o texto ou enviar a foto da sua redação.")
+            else:
+                with st.spinner("A IA está processando o espelho visual, cruzando com a banca e gerando o diagnóstico..."):
+                    
+                    contents_payload = []
+                    
+                    if imagens_criterios:
+                        contents_payload.append("--- IMAGENS COM OS CRITÉRIOS E ESPELHO DE PONTUAÇÃO DA BANCA ---")
+                        for img in imagens_criterios:
+                            contents_payload.append(types.Part.from_bytes(data=img.getvalue(), mime_type=img.type or "image/jpeg"))
 
-                # 3. Monta o prompt de instruções
-                info_texto_digitado = f"\nTexto Digitado pelo Aluno:\n{texto_usuario}" if texto_usuario.strip() else "\n(O aluno enviou a redação em formato de imagem/foto)."
+                    if foto_redacao_files:
+                        contents_payload.append("--- FOTO(S) DA REDAÇÃO ESCRITA PELO ALUNO ---")
+                        for foto in foto_redacao_files:
+                            contents_payload.append(types.Part.from_bytes(data=foto.getvalue(), mime_type=foto.type or "image/jpeg"))
 
-                texto_prompt_final = f"""
+                    info_texto_digitado = f"\nTexto Digitado pelo Aluno:\n{texto_usuario}" if texto_usuario.strip() else "\n(O aluno enviou a redação em formato de imagem/foto)."
+
+                    comparativo_texto = f"\n- Simulador Cruzado Ativo: Compare também como essa redação pontuaria sob o olhar da banca secundária: {banca_secundaria}." if ativar_comparador and banca_secundaria else ""
+
+                    texto_prompt_final = f"""
 INSTRUÇÕES DE AVALIAÇÃO:
 - Padrão de Exame Base: {tipo_exame}
-- Banca Organizadora: {banca_nome}
+- Banca Organizadora Principal: {banca_nome}
 - Nota Máxima Permitida: {nota_maxima} pontos
 - Limite de Linhas: de {linhas_min} a {linhas_max} linhas
+{comparativo_texto}
 
 DIRETRIZES:
-1. Se houver imagens de critérios da banca fornecidas acima, utilize-as obrigatoriamente para pontuar cada tópico, ver penalidades e exigências.
-2. Se houver foto(s) da redação fornecida(s) acima, faça a transcrição visual e leitura detalhada da caligrafia do aluno para avaliá-la.
+1. Utilize obrigatoriamente as imagens de critérios/espelhos para pontuar quesito por quesito de forma exata.
+2. Faça um "Raio-X de Repertórios e Clichês", avaliando se o aluno utilizou argumentos "coringas" repetitivos ou repertórios produtivos originais.
 {info_texto_digitado}
 
 Tema da Redação: {tema_redacao}
 """
-                contents_payload.append(texto_prompt_final)
+                    contents_payload.append(texto_prompt_final)
 
-                prompt_sistema = f"""Você é um corretor oficial, altamente técnico e especialista em bancas de redação e concursos.
-Sua tarefa é ler as imagens enviadas (espelho/critérios da banca e/ou foto da redação manuscrita do aluno), transcrever o texto caso necessário, e aplicar uma correção impecável e rigorosa.
+                    prompt_sistema = f"""Você é o corretor mais técnico, rigoroso e avançado do mercado para bancas de redação e concursos.
+Sua tarefa é analisar as imagens enviadas (espelho/critérios e/ou foto da redação), transcrever o texto manuscrito se necessário, e entregar uma avaliação estruturada e cirúrgica.
 
-Estruture sua resposta de forma clara utilizando Markdown contendo obrigatoriamente:
-1. **Nota Global Atribuída** (Proporcional à nota máxima de {nota_maxima} pontos, embasada no espelho).
-2. **Transcrição Detectada** (Se o aluno enviou foto, traga brevemente o texto transcrito para validação).
-3. **Análise por Tópicos / Critérios do Espelho** (Pontuação detalhada quesito por quesito com base nas imagens da banca).
-4. **Desvios Gramaticais e Estruturais** (Apontamento de desvios e erros).
-5. **Caminho para a Nota Máxima** (Orientações exatas de como reescrever para gabaritar).
+Estruture sua resposta obrigatoriamente usando Markdown com as seguintes seções:
+1. **Nota Global Atribuída** (Proporcional a {nota_maxima} pontos).
+2. **Resumo do Espelho e Gride de Pontuação** (Tabela ou tópicos detalhando quanto tirou em cada quesito visualizado).
+3. **Transcrição Detectada** (Caso tenha enviado foto, traga o texto transcrito).
+4. **Raio-X de Repertórios e Clichês** (Análise crítica sobre a originalidade e o uso de argumentos coringas).
+5. **Desvios Gramaticais e Estruturais** (Erros ortográficos e sintáticos apontados).
+6. **Caminho para a Nota Máxima** (Orientações exatas de reescrita).
+{("(7. Comparativo Cruzado com " + str(banca_secundaria) + ")") if ativar_comparador and banca_secundaria else ""}
 """
 
-                try:
-                    response = gemini_client.models.generate_content(
-                        model='gemini-3.6-flash',
-                        contents=contents_payload,
-                        config=types.GenerateContentConfig(
-                            system_instruction=prompt_sistema,
-                            temperature=0.1,
+                    try:
+                        response = gemini_client.models.generate_content(
+                            model='gemini-3.6-flash',
+                            contents=contents_payload,
+                            config=types.GenerateContentConfig(
+                                system_instruction=prompt_sistema,
+                                temperature=0.1,
+                            )
                         )
+                        resultado_final = response.text
+                        st.markdown(resultado_final)
+                        
+                        # Salva automaticamente no histórico local
+                        salvar_historico({
+                            "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "tema": tema_redacao,
+                            "banca": banca_nome,
+                            "resultado": resultado_final
+                        })
+                        
+                    except Exception as e:
+                        st.error(f"Erro ao processar a solicitação com a API do Gemini: {e}")
+        else:
+            st.info("Configure os critérios na barra lateral, envie o texto ou foto da redação e clique em **Executar Análise Cirúrgica**.")
+
+with aba_reescrita:
+    st.subheader("✍️ Módulo de Reescrita Interativa (Nota 10)")
+    st.markdown("Cole abaixo um parágrafo específico ou sua redação fraca para que a IA reescreva mantendo o seu estilo original, mas elevando-o ao gabarito da banca.")
+    
+    paragrafo_alvo = st.text_area("Trecho ou Parágrafo Original:", height=150, placeholder="Cole aqui o parágrafo que tirou nota baixa...")
+    instrucao_melhoria = st.text_input("Foco da Reescrita:", value="Elevar o nível argumentativo, corrigir desvios e garantir pontuação máxima na coesão.")
+    
+    if st.button("✨ Gerar Versão Nota Máxima"):
+        if not st.session_state.active_gemini_key:
+            st.error("Chave de API não configurada.")
+        elif not paragrafo_alvo.strip():
+            st.warning("Insira o trecho original.")
+        else:
+            with st.spinner("Reescrevendo o texto com padrão de excelência..."):
+                prompt_reescrita = f"""Atue como um redator gabaritado em concursos e vestibulares.
+Reescreva o trecho abaixo com base no padrão {tipo_exame} e banca {banca_nome}.
+Instruções: {instrucao_melhoria}
+
+Trecho Original:
+{paragrafo_alvo}
+
+Apresente:
+1. **Versão Reescrita (Nota Máxima)**
+2. **O que foi melhorado em relação ao original**
+"""
+                try:
+                    resp_re = gemini_client.models.generate_content(
+                        model='gemini-3.6-flash',
+                        contents=prompt_reescrita,
+                        config=types.GenerateContentConfig(temperature=0.3)
                     )
-                    st.markdown(response.text)
+                    st.markdown(resp_re.text)
                 except Exception as e:
-                    st.error(f"Erro ao processar a solicitação com a API do Gemini: {e}")
+                    st.error(f"Erro: {e}")
+
+with aba_historico:
+    st.subheader("📈 Dashboard & Histórico de Redações")
+    st.markdown("Acompanhe o seu progresso e os temas já corrigidos na plataforma.")
+    
+    historico = carregar_historico()
+    if not historico:
+        st.info("Nenhuma redação salva no histórico ainda. Faça sua primeira correção na aba ao lado!")
     else:
-        st.info("Configure os critérios na barra lateral, envie o texto ou a foto da redação e clique em **Analizar e Corrigir Redação**.")
+        st.metric("Total de Redações Corrigidas", len(historico))
+        st.markdown("---")
+        for i, item in enumerate(historico):
+            with st.expander(f"📌 {item['tema']} ({item['banca']}) - {item['data']}"):
+                st.markdown(item['resultado'])
