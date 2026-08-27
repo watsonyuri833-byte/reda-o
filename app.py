@@ -12,7 +12,7 @@ from google.genai import types
 # 1. CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
 # ==========================================
 st.set_page_config(
-    page_title="Corretor de Redação - IA Pro",
+    page_title="Plataforma Concursos - IA Pro",
     page_icon="📝",
     layout="wide",
 )
@@ -137,16 +137,16 @@ def deletar_registro_historico(index):
 # 3. SIDEBAR DE CONFIGURAÇÃO E PARÂMETROS
 # ==========================================
 with st.sidebar:
-    st.markdown("### 📝 Corretor Pro - IA")
+    st.markdown("### 📝 Plataforma Concursos - IA")
     st.caption("Powered by Gemini 3.6 Flash")
     st.markdown("---")
     
     tipo_exame = st.selectbox(
-        "Padrão Principal:",
+        "Padrão de Redação:",
         ["ENEM (Competências 1 a 5)", "Dissertativo-Argumentativo Padrão", "Concurso Público (Personalizado)"]
     )
     
-    st.markdown("### 🏛️ Parâmetros da Banca")
+    st.markdown("### 🏛️ Parâmetros da Banca de Redação")
     banca_nome = st.selectbox("Banca Organizadora:", ["Geral / Outra", "Instituto AOCP", "CESPE / Cebraspe", "FGV", "FCC", "Vunesp", "IBFC"])
     nota_maxima = st.number_input("Nota Máxima:", min_value=10, max_value=1000, value=100, step=10)
     
@@ -162,7 +162,7 @@ with st.sidebar:
     banca_secundaria = st.selectbox("Segunda Banca para Comparação:", ["ENEM", "Instituto AOCP", "CESPE / Cebraspe", "FGV", "FCC"]) if ativar_comparador else None
 
     st.markdown("---")
-    st.markdown("### 🖼️ Espelho / Critérios da Banca")
+    st.markdown("### 🖼️ Espelho / Critérios de Redação")
     imagens_criterios = st.file_uploader(
         "Fotos do edital ou espelho de pontos:",
         type=["png", "jpg", "jpeg"],
@@ -179,17 +179,22 @@ with st.sidebar:
 # ==========================================
 # 4. INTERFACE PRINCIPAL (ABAS DO SISTEMA)
 # ==========================================
-st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações Pro</h1>", unsafe_allow_html=True)
-st.markdown("Sistema avançado com Gride de Espelho Oficial, Reescrita Interativa e Dashboard com gestão de histórico.")
+st.markdown("<h1 style='margin:0;'>🎯 Plataforma Completa: Redações & TAF Pro</h1>", unsafe_allow_html=True)
+st.markdown("Gerencie suas redações com espelho oficial e monte seus treinos personalizados para o Teste de Aptidão Física (TAF).")
 st.markdown("---")
 
-aba_corretor, aba_reescrita, aba_historico = st.tabs(["🚀 Corretor & Relatório", "✍️ Reescrita Interativa (Nota 10)", "📈 Dashboard & Histórico de Redações"])
+aba_corretor, aba_reescrita, aba_taf, aba_historico = st.tabs([
+    "🚀 Corretor & Relatório", 
+    "✍️ Reescrita Interativa (Nota 10)", 
+    "🏃‍♂️ Monitor TAF & Treinos", 
+    "📈 Dashboard & Histórico"
+])
 
 with aba_corretor:
     col_input, col_output = st.columns([1, 1], gap="large")
 
     with col_input:
-        st.subheader("✍️ Envio do Texto ou Foto")
+        st.subheader("✍️ Envio do Texto ou Foto da Redação")
         tema_redacao = st.text_input("🎯 Tema da Redação:", placeholder="Ex: Os desafios da valorização da água no Brasil")
         
         sub_aba_texto, sub_aba_foto = st.tabs(["⌨️ Digitar Texto", "📸 Enviar Foto da Redação"])
@@ -258,7 +263,7 @@ Tema da Redação: {tema_redacao}
                     prompt_sistema = f"""Você é o corretor mais técnico e rigoroso do mercado para bancas de redação e concursos ({banca_nome}).
 Sua tarefa é analisar as imagens enviadas, transcrever o texto se necessário, e entregar uma avaliação estruturada e cirúrgica.
 
-Estruture sua resposta obrigatoriamente usando Markdown com as seguintes seções:
+Estruture sua resposta obrigatoriamente usando Markdown com las seguintes seções:
 1. **Nota Global Atribuída** (Proporcional a {nota_maxima} pontos).
 2. **Gride de Espelho Oficial** (Resumo visual estruturado da nota separada por eixos de pontuação da banca).
 3. **Transcrição Detectada** (Caso tenha enviado foto, traga o texto transcrito).
@@ -326,6 +331,76 @@ Apresente:
                     st.markdown(resp_re.text)
                 except Exception as e:
                     st.error(f"Erro: {e}")
+
+with aba_taf:
+    st.subheader("🏃‍♂️ Monitor de TAF (Teste de Aptidão Física) & Gerador de Treinos")
+    st.markdown("Envie a foto ou print do edital do seu concurso contendo os índices do TAF e informe suas marcas atuais. A IA irá cruzar seus dados, apontar onde você precisa melhorar e montar um planejamento de treino direcionado.")
+    
+    col_taf_in, col_taf_out = st.columns([1, 1], gap="large")
+    
+    with col_taf_in:
+        st.markdown("### 📋 Dados do seu TAF")
+        nome_concurso_taf = st.text_input("Cargo / Concurso Alvo:", placeholder="Ex: PM / Bombeiro / Polícia Civil / Agente Penitenciário")
+        
+        imagens_edital_taf = st.file_uploader(
+            "📸 Envie a foto ou print do edital (tabela de índices do TAF):",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            key="edital_taf_upload"
+        )
+        
+        status_atual_candidato = st.text_area(
+            "💪 Suas Marcas ou Desempenho Atual:",
+            height=150,
+            placeholder="Ex: Consegui fazer apenas 5 barras fixas, faço abdominal remador em 1 minuto (35 repetições), e corro 2.000 metros em 12 minutos. Tenho dificuldade em membros superiores."
+        )
+        
+        botao_gerar_taf = st.button("🏋️‍♂️ Gerar Diagnóstico & Plano de Treino TAF", use_container_width=True)
+        
+    with col_taf_out:
+        st.subheader("📊 Planejamento Estratégico & Treinamento Físico")
+        
+        if botao_gerar_taf:
+            if not st.session_state.active_gemini_key:
+                st.error("⚠️ Chave de API do Gemini não configurada.")
+            elif not nome_concurso_taf.strip():
+                st.warning("⚠️ Informe o cargo ou concurso alvo.")
+            elif not imagens_edital_taf:
+                st.warning("⚠️ Por favor, envie a foto/print do edital com os critérios do TAF.")
+            else:
+                with st.spinner("Analisando os índices exigidos no edital, calculando seu déficit e estruturando sua periodização de treinos..."):
+                    
+                    payload_taf = []
+                    payload_taf.append("--- IMAGENS DO EDITAL COM OS CRITÉRIOS E ÍNDICES DO TAF ---")
+                    for img_taf in imagens_edital_taf:
+                        payload_taf.append(types.Part.from_bytes(data=img_taf.getvalue(), mime_type=img_taf.type or "image/jpeg"))
+                        
+                    prompt_taf_texto = f"""
+CONCURSO ALVO: {nome_concurso_taf}
+SITUAÇÃO ATUAL DO CANDIDATO: {status_atual_candidato}
+
+DIRETRIZES DE ANÁLISE:
+1. Analise detalhadamente a tabela de índices/critérios do TAF apresentada na(s) imagem(ns) do edital para o cargo "{nome_concurso_taf}".
+2. Compare rigorosamente as exigências mínimas do edital com a situação atual informada pelo candidato.
+3. Elabore um relatório estruturado contendo:
+   - **Diagnóstico de Lacunas:** Em quais testes o candidato está abaixo do mínimo ou raspando, e o que ele precisa melhorar urgentemente para ser aprovado.
+   - **Plano de Metas:** Quanto ele precisa evoluir por semana até zerar os índices.
+   - **Periodização de Treinos (Semanal):** Sugestão prática de rotina de treinos específica para as deficiências apontadas (exercícios focados, descanso, progressão de carga e aeróbico).
+   - **Dicas de Execução e Prevenção de Lesões** para o dia do teste.
+"""
+                    payload_taf.append(prompt_taf_texto)
+                    
+                    try:
+                        resp_taf = gemini_client.models.generate_content(
+                            model='gemini-3.6-flash',
+                            contents=payload_taf,
+                            config=types.GenerateContentConfig(temperature=0.2)
+                        )
+                        st.markdown(resp_taf.text)
+                    except Exception as e:
+                        st.error(f"Erro ao processar o TAF com a API do Gemini: {e}")
+        else:
+            st.info("Envie a foto do edital do TAF ao lado, preencha suas marcas e clique em **Gerar Diagnóstico & Plano de Treino TAF**.")
 
 with aba_historico:
     st.subheader("📈 Dashboard Analítico & Gestão de Histórico")
