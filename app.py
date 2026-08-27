@@ -106,7 +106,7 @@ def init_gemini(api_key: str):
 gemini_client = init_gemini(st.session_state.active_gemini_key)
 
 # ==========================================
-# 3. SIDEBAR DE CONFIGURAÇÃO E CRITÉRIOS DA BANCA
+# 3. SIDEBAR DE CONFIGURAÇÃO E PARÂMETROS
 # ==========================================
 with st.sidebar:
     st.markdown("### 📝 Corretor de Redação")
@@ -118,28 +118,29 @@ with st.sidebar:
         ["ENEM (Competências 1 a 5)", "Dissertativo-Argumentativo Padrão", "Concurso Público (Personalizado)"]
     )
     
-    st.markdown("### 🏛️ Requisitos e Parâmetros da Banca")
-    st.markdown("Organize abaixo as regras específicas exigidas pela banca organizadora:")
-    
-    # Campos estruturados para evitar bloco de texto confuso
+    st.markdown("### 🏛️ Parâmetros da Banca")
     banca_nome = st.selectbox("Banca Organizadora:", ["Geral / Outra", "CESPE / Cebraspe", "FGV", "FCC", "Vunesp", "IBFC"])
     nota_maxima = st.number_input("Nota Máxima da Redação:", min_value=10, max_value=1000, value=100, step=10)
     
     col_l1, col_l2 = st.columns(2)
     with col_l1:
-        linhas_min = st.number_input("Mín. de Linhas:", min_value=0, max_value=50, value=20)
+        linhas_min = st.number_input("Mín. Linhas:", min_value=0, max_value=50, value=20)
     with col_l2:
-        linhas_max = st.number_input("Máx. de Linhas:", min_value=0, max_value=60, value=30)
+        linhas_max = st.number_input("Máx. Linhas:", min_value=0, max_value=60, value=30)
         
-    criterios_extras = st.text_area(
-        "Instruções ou Foco Específico da Banca:",
-        placeholder="Ex: Rigor excessivo com gramática, obrigatoriedade de título, penalização por desrespeito à estrutura dissertativa...",
-        height=100
+    st.markdown("---")
+    st.markdown("### 🖼️ Espelho / Critérios da Banca (Imagens)")
+    st.markdown("Envie fotos ou prints do edital, espelho de correção ou tabela de pontos da banca:")
+    
+    imagens_criterios = st.file_uploader(
+        "Carregar imagens de critérios:",
+        type=["png", "jpg", "jpeg"],
+        accept_multiple_files=True
     )
     
     st.markdown("---")
     if not st.session_state.active_gemini_key:
-        st.warning("⚠️ Chave `GEMINI_API_KEY` não encontrada nos secrets do Streamlit.")
+        st.warning("⚠️ Chave `GEMINI_API_KEY` não encontrada nos secrets.")
     else:
         st.success("✅ IA Conectada com Sucesso")
 
@@ -147,7 +148,7 @@ with st.sidebar:
 # 4. INTERFACE PRINCIPAL
 # ==========================================
 st.markdown("<h1 style='margin:0;'>📝 Plataforma Inteligente de Correção de Redações</h1>", unsafe_allow_html=True)
-st.markdown("Insira o tema e o texto da sua redação para receber uma análise técnica detalhada baseada nos parâmetros e na banca definidos.")
+st.markdown("Envie as imagens com os critérios da banca na barra lateral, preencha o tema e a sua redação abaixo para uma correção milimétrica.")
 st.markdown("---")
 
 col_input, col_output = st.columns([1, 1], gap="large")
@@ -164,50 +165,70 @@ with col_output:
     
     if botao_analisar:
         if not st.session_state.active_gemini_key:
-            st.error("⚠️ Chave de API do Gemini não configurada. Adicione-a nos secrets do Streamlit.")
+            st.error("⚠️ Chave de API do Gemini não configurada.")
         elif not tema_redacao.strip():
             st.warning("⚠️ Por favor, informe o tema da redação.")
         elif not texto_usuario.strip():
             st.warning("⚠️ O campo de texto da redação está vazio.")
         else:
-            with st.spinner("A IA está avaliando rigorosamente o texto com base nos critérios organizados da banca..."):
+            with st.spinner("A IA está analisando as imagens de critérios da banca e avaliando o texto rigorosamente..."):
                 
-                # Consolida os parâmetros organizados de forma limpa para a IA
-                parametros_banca_formatados = f"""
+                # Prepara a lista de conteúdos para o Gemini (aceita texto e imagens simultaneamente)
+                contents_payload = []
+                
+                # Se o usuário enviou imagens de critérios, faz o append delas primeiro
+                if imagens_criterios:
+                    contents_payload.append("--- IMAGENS COM OS CRITÉRIOS, ESPELHO E PONTUAÇÃO DA BANCA ---")
+                    for img in imagens_criterios:
+                        img_bytes = img.getvalue()
+                        # Identifica o tipo mime correto da imagem enviada
+                        mime_type = img.type if img.type else "image/jpeg"
+                        contents_payload.append(
+                            types.Part.from_bytes(
+                                data=img_bytes,
+                                mime_type=mime_type,
+                            )
+                        )
+
+                # Adiciona o texto da redação e o tema
+                texto_prompt_final = f"""
+INSTRUÇÕES DE AVALIAÇÃO:
+- Padrão de Exame Base: {tipo_exame}
 - Banca Organizadora: {banca_nome}
 - Nota Máxima Permitida: {nota_maxima} pontos
 - Limite de Linhas: de {linhas_min} a {linhas_max} linhas
-- Observações / Foco Específico: {criterios_extras if criterios_extras.strip() else 'Nenhum adicional'}
+
+{("IMPORTANTE: Utilize obrigatoriamente as imagens de critérios acima fornecidas para extrair detalhadamente o valor de cada tópico, o que pontua e o que retira pontos, aplicando rigorosamente essa tabela na correção." if imagens_criterios else "Avalie com base estrita nos critérios padrão da banca informada.")}
+
+--- DADOS DA REDAÇÃO ---
+Tema: {tema_redacao}
+
+Texto do Aluno:
+{texto_usuario}
 """
+                contents_payload.append(texto_prompt_final)
 
-                prompt_sistema = f"""Você é um corretor oficial, altamente técnico e rigoroso em redações.
-Padrão de Correção Base: {tipo_exame}
-
-PARÂMETROS E REQUISITOS DA BANCA DEFINIDOS PELO USUÁRIO:
-{parametros_banca_formatados}
-
-Seu objetivo é analisar o texto enviado pelo aluno considerando rigorosamente estes parâmetros, a escala de nota máxima informada e as exigências da banca.
+                prompt_sistema = f"""Você é um corretor oficial, altamente técnico e especialista em bancas de redação e concursos.
+Seu trabalho é ler com máxima atenção as imagens com os critérios/espelhos da banca enviadas pelo usuário, mapear exatamente o valor de cada ponto, penalidades e exigências, e em seguida avaliar o texto do aluno de forma cirúrgica com base exclusiva nelas.
 
 Estruture sua resposta de forma clara utilizando Markdown contendo obrigatoriamente:
-1. **Nota Global Atribuída** (Proporcional à nota máxima de {nota_maxima} pontos).
-2. **Avaliação por Critérios / Competências** (Análise técnica detalhada de acordo com as regras da banca).
-3. **Desvios Gramaticais e Estruturais** (Aponte falhas ortográficas, sintáticas ou de formatação).
-4. **Caminho para a Nota Máxima** (Orientações práticas de reescrita para alcançar o gabarito).
+1. **Nota Global Atribuída** (Proporcional à nota máxima de {nota_maxima} pontos, fundamentada no espelho da banca).
+2. **Análise por Tópicos / Critérios do Espelho** (Demonstre o quanto o aluno tirou em cada quesito visualizado nas imagens).
+3. **Desvios Gramaticais e Estruturais** (Apontamento detalhado de falhas).
+4. **Caminho para a Nota Máxima** (Orientações exatas de como ajustar o texto com base nas regras da banca).
 """
-
-                conteudo_prompt = f"Tema da Redação: {tema_redacao}\n\nTexto do Aluno:\n{texto_usuario}"
 
                 try:
                     response = gemini_client.models.generate_content(
                         model='gemini-3.6-flash',
-                        contents=conteudo_prompt,
+                        contents=contents_payload,
                         config=types.GenerateContentConfig(
                             system_instruction=prompt_sistema,
-                            temperature=0.2,
+                            temperature=0.1, # Temperatura bem baixa para seguir estritamente o espelho visual
                         )
                     )
                     st.markdown(response.text)
                 except Exception as e:
                     st.error(f"Erro ao processar a solicitação com a API do Gemini: {e}")
     else:
-        st.info("Ajuste os parâmetros da banca na barra lateral, insira sua redação e clique em **Analisar e Corrigir Redação**.")
+        st.info("Envie as imagens dos critérios da banca na barra lateral (se houver), preencha a redação e clique em **Analisar e Corrigir Redação**.")
